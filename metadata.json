@@ -1,0 +1,5 @@
+{
+  "name": "Finance Prototype",
+  "description": "A local-first personal finance app with budgeting, transactions, net worth tracking, and FIRE projections.",
+  "requestFramePermissions": []
+}
