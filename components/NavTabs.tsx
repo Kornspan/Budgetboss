@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { useAuth } from '../auth/AuthContext';
 
 type Tab = 'dashboard' | 'budgets' | 'transactions' | 'accounts' | 'goals' | 'settings';
 
@@ -10,6 +11,9 @@ interface NavTabsProps {
 }
 
 export const NavTabs: React.FC<NavTabsProps> = ({ currentTab, onTabChange, darkMode, toggleDarkMode }) => {
+  const { user, signOut } = useAuth();
+  const [signOutError, setSignOutError] = useState<string | null>(null);
+  const [isSigningOut, setIsSigningOut] = useState(false);
   const tabs: { id: Tab; label: string }[] = [
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'budgets', label: 'Budgets' },
@@ -18,6 +22,20 @@ export const NavTabs: React.FC<NavTabsProps> = ({ currentTab, onTabChange, darkM
     { id: 'goals', label: 'Goals / FIRE' },
     { id: 'settings', label: 'Settings' },
   ];
+
+  const handleSignOut = async () => {
+    if (!user) return;
+    setSignOutError(null);
+    setIsSigningOut(true);
+    try {
+      await signOut();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to sign out.';
+      setSignOutError(message);
+    } finally {
+      setIsSigningOut(false);
+    }
+  };
 
   return (
     <nav className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-50 transition-colors duration-200">
@@ -68,6 +86,23 @@ export const NavTabs: React.FC<NavTabsProps> = ({ currentTab, onTabChange, darkM
                 </svg>
               )}
             </button>
+            {user && (
+              <div className="flex flex-col text-right">
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  {user.email || user.id}
+                </span>
+                <button
+                  onClick={handleSignOut}
+                  disabled={isSigningOut}
+                  className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-60"
+                >
+                  {isSigningOut ? 'Signing out…' : 'Sign out'}
+                </button>
+                {signOutError && (
+                  <span className="text-xs text-red-500 mt-1">{signOutError}</span>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

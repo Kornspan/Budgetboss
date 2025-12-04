@@ -2,9 +2,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { FinanceState, Transaction, Account, Category, BudgetEntry, DashboardWidgetConfig, FireConfig, CategoryRule, BudgetMonth, Goal, AppSettings, ThemePreference, AiPersonality } from '../types';
 import { autoCategorizeTransaction } from '../lib/finance';
+import { fetchFinanceSnapshot, FinanceSnapshot } from '../lib/financeSync';
 
 const STORAGE_KEY = 'finance_prototype_v2_plaid_ready';
-const CURRENT_USER_ID = 'user_01';
+const LOCAL_USER_ID = 'local-user';
 
 // Default Widgets
 const DEFAULT_WIDGETS: DashboardWidgetConfig[] = [
@@ -31,54 +32,54 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 const DEFAULT_STATE: FinanceState = {
-  userId: CURRENT_USER_ID,
+  userId: LOCAL_USER_ID,
   accounts: [
     { 
-      id: 'acc_1', userId: CURRENT_USER_ID, name: 'Main Checking', type: 'checking', 
+      id: 'acc_1', userId: LOCAL_USER_ID, name: 'Main Checking', type: 'checking', 
       provider: 'manual', currentBalanceCents: 241458 
     },
     { 
-      id: 'acc_2', userId: CURRENT_USER_ID, name: 'High Yield Savings', type: 'savings', 
+      id: 'acc_2', userId: LOCAL_USER_ID, name: 'High Yield Savings', type: 'savings', 
       provider: 'manual', currentBalanceCents: 1000000 
     },
     { 
-      id: 'acc_3', userId: CURRENT_USER_ID, name: 'Chase Sapphire', type: 'credit', 
+      id: 'acc_3', userId: LOCAL_USER_ID, name: 'Chase Sapphire', type: 'credit', 
       provider: 'manual', currentBalanceCents: -15000 
     },
   ],
   categories: [
-    { id: 'cat_1', userId: CURRENT_USER_ID, name: 'Groceries', group: 'Living' },
-    { id: 'cat_2', userId: CURRENT_USER_ID, name: 'Rent/Mortgage', group: 'Living' },
-    { id: 'cat_3', userId: CURRENT_USER_ID, name: 'Dining Out', group: 'Discretionary' },
-    { id: 'cat_4', userId: CURRENT_USER_ID, name: 'Transport', group: 'Living' },
-    { id: 'cat_5', userId: CURRENT_USER_ID, name: 'General Savings', group: 'Savings' },
+    { id: 'cat_1', userId: LOCAL_USER_ID, name: 'Groceries', group: 'Living' },
+    { id: 'cat_2', userId: LOCAL_USER_ID, name: 'Rent/Mortgage', group: 'Living' },
+    { id: 'cat_3', userId: LOCAL_USER_ID, name: 'Dining Out', group: 'Discretionary' },
+    { id: 'cat_4', userId: LOCAL_USER_ID, name: 'Transport', group: 'Living' },
+    { id: 'cat_5', userId: LOCAL_USER_ID, name: 'General Savings', group: 'Savings' },
   ],
   categoryRules: [
-    { id: 'rule_1', userId: CURRENT_USER_ID, pattern: 'Trader Joes', categoryId: 'cat_1' },
-    { id: 'rule_2', userId: CURRENT_USER_ID, pattern: 'Coffee', categoryId: 'cat_3' },
+    { id: 'rule_1', userId: LOCAL_USER_ID, pattern: 'Trader Joes', categoryId: 'cat_1' },
+    { id: 'rule_2', userId: LOCAL_USER_ID, pattern: 'Coffee', categoryId: 'cat_3' },
   ],
   budgetMonths: [
-    { id: 'bm_2024_05', userId: CURRENT_USER_ID, year: 2024, month: 5 },
+    { id: 'bm_2024_05', userId: LOCAL_USER_ID, year: 2024, month: 5 },
   ],
   budgetEntries: [
-    { id: 'be_1', userId: CURRENT_USER_ID, budgetMonthId: 'bm_2024_05', categoryId: 'cat_1', budgetedCents: 60000 },
-    { id: 'be_2', userId: CURRENT_USER_ID, budgetMonthId: 'bm_2024_05', categoryId: 'cat_2', budgetedCents: 200000 },
-    { id: 'be_3', userId: CURRENT_USER_ID, budgetMonthId: 'bm_2024_05', categoryId: 'cat_3', budgetedCents: 20000 },
+    { id: 'be_1', userId: LOCAL_USER_ID, budgetMonthId: 'bm_2024_05', categoryId: 'cat_1', budgetedCents: 60000 },
+    { id: 'be_2', userId: LOCAL_USER_ID, budgetMonthId: 'bm_2024_05', categoryId: 'cat_2', budgetedCents: 200000 },
+    { id: 'be_3', userId: LOCAL_USER_ID, budgetMonthId: 'bm_2024_05', categoryId: 'cat_3', budgetedCents: 20000 },
   ],
   transactions: [
     { 
-      id: 'tx_1', userId: CURRENT_USER_ID, date: new Date().toISOString().split('T')[0], 
+      id: 'tx_1', userId: LOCAL_USER_ID, date: new Date().toISOString().split('T')[0], 
       accountId: 'acc_1', categoryId: 'cat_1', name: 'Trader Joes', amountCents: -8542,
       source: 'manual', status: 'posted'
     },
     { 
-      id: 'tx_2', userId: CURRENT_USER_ID, date: new Date().toISOString().split('T')[0], 
+      id: 'tx_2', userId: LOCAL_USER_ID, date: new Date().toISOString().split('T')[0], 
       accountId: 'acc_1', categoryId: 'cat_3', name: 'Local Coffee Shop', amountCents: -1250,
       source: 'manual', status: 'posted'
     }
   ],
   goals: [
-    { id: 'goal_1', userId: CURRENT_USER_ID, name: 'New Laptop', targetCents: 200000, currentCents: 50000 },
+    { id: 'goal_1', userId: LOCAL_USER_ID, name: 'New Laptop', targetCents: 200000, currentCents: 50000 },
   ],
   fireConfig: {
     currentPortfolioCents: 5000000,
@@ -128,6 +129,27 @@ export function useFinanceState() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     }
   }, [state, isLoaded]);
+
+  const applySnapshot = useCallback((userId: string, snapshot: FinanceSnapshot) => {
+    setState(prev => {
+      const categorizedTransactions = snapshot.transactions.map(tx => {
+        if (tx.categoryId) return tx;
+        return autoCategorizeTransaction(tx, prev.categoryRules);
+      });
+
+      return {
+        ...prev,
+        userId,
+        accounts: snapshot.accounts,
+        categories: snapshot.categories,
+        transactions: categorizedTransactions,
+        budgetMonths: snapshot.budgetMonths,
+        budgetEntries: snapshot.budgetEntries,
+        goals: snapshot.goals,
+        fireConfig: snapshot.fireConfig,
+      };
+    });
+  }, []);
 
   // --- CORE ACTIONS ---
 
@@ -352,6 +374,11 @@ export function useFinanceState() {
     window.location.reload();
   }, []);
 
+  const loadFromSupabaseForUser = useCallback(async (userId: string) => {
+    const snapshot = await fetchFinanceSnapshot(userId);
+    applySnapshot(userId, snapshot);
+  }, [applySnapshot]);
+
   return {
     state,
     isLoaded,
@@ -371,6 +398,7 @@ export function useFinanceState() {
     updateAppPreferences,
     updateAiSettings,
     exportStateAsJson,
-    resetAllData
+    resetAllData,
+    loadFromSupabaseForUser
   };
 }

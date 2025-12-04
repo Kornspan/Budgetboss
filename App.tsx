@@ -9,8 +9,13 @@ import { GoalsFireView } from './components/GoalsFireView';
 import { SettingsView } from './components/SettingsView';
 import { FloatingAssistant } from './components/FloatingAssistant';
 import { useFinanceState } from './hooks/useFinanceState';
+import { useAuth } from './auth/AuthContext';
+import { AuthPage } from './auth/AuthPage';
+import { ResetPasswordPage } from './auth/ResetPasswordPage';
 
 export default function App() {
+  const { user, isLoading: authLoading } = useAuth();
+  const pathname = typeof window !== 'undefined' ? window.location.pathname : '/';
   const [currentTab, setCurrentTab] = useState<'dashboard' | 'budgets' | 'transactions' | 'accounts' | 'goals' | 'settings'>('dashboard');
   const [darkMode, setDarkMode] = useState(false);
   
@@ -29,7 +34,8 @@ export default function App() {
     updateAppPreferences,
     updateAiSettings,
     exportStateAsJson,
-    resetAllData
+    resetAllData,
+    loadFromSupabaseForUser
   } = useFinanceState();
 
   // Apply Theme
@@ -56,6 +62,22 @@ export default function App() {
     const nextTheme = darkMode ? 'light' : 'dark';
     updateAppPreferences({ themePreference: nextTheme });
   };
+
+  if (pathname.startsWith('/auth/reset')) {
+    return <ResetPasswordPage />;
+  }
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-200">
+        <p>Loading...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <AuthPage />;
+  }
 
   return (
     <div>
@@ -111,6 +133,7 @@ export default function App() {
               onUpdateAiSettings={updateAiSettings}
               onExportData={exportStateAsJson}
               onResetData={resetAllData}
+              onLoadFromSupabaseForUser={loadFromSupabaseForUser}
             />
           )}
         </main>
