@@ -85,8 +85,7 @@ create table if not exists public.transactions (
 create index if not exists transactions_user_date_idx on public.transactions (user_id, transaction_date desc);
 create index if not exists transactions_user_account_idx on public.transactions (user_id, account_id);
 create unique index if not exists transactions_user_external_id_idx
-    on public.transactions (user_id, external_transaction_id)
-    where external_transaction_id is not null;
+    on public.transactions (user_id, external_transaction_id);
 
 create table if not exists public.goals (
     id text primary key,
