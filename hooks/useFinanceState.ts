@@ -206,7 +206,7 @@ export function useFinanceState() {
     });
   }, []);
 
-  const addManualTransaction = useCallback((input: Omit<Transaction, 'id' | 'userId' | 'source' | 'status' | 'importedAt'>) => {
+  const addManualTransaction = useCallback(async (input: Omit<Transaction, 'id' | 'userId' | 'source' | 'status' | 'importedAt'>) => {
     const newTx: Transaction = {
       ...input,
       id: `tx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -217,6 +217,21 @@ export function useFinanceState() {
 
     // For manual transactions, we respect the user's choice if provided, otherwise try basic rule matching
     const categorizedTx = input.categoryId ? newTx : autoCategorizeTransaction(newTx, state.categoryRules);
+
+    // Persist to Supabase
+    if (state.userId && state.userId !== LOCAL_USER_ID) {
+      const { error } = await supabase.from('transactions').insert({
+        user_id: state.userId,
+        account_id: categorizedTx.accountId,
+        category_id: categorizedTx.categoryId,
+        date: categorizedTx.date,
+        name: categorizedTx.name,
+        amount_cents: categorizedTx.amountCents,
+        source: 'manual',
+        status: 'posted'
+      });
+      if (error) console.error('[finance] addManualTransaction error', error);
+    }
 
     setState(prev => {
       const newTransactions = [categorizedTx, ...prev.transactions];
@@ -294,14 +309,37 @@ export function useFinanceState() {
     });
   }, []);
 
-  const addCategory = useCallback((name: string, group?: string) => {
+  const addCategory = useCallback(async (name: string, group?: string) => {
+    // Optimistic update
+    const tempId = `cat_${Date.now()}`;
     const newCat: Category = {
-      id: `cat_${Date.now()}`,
+      id: tempId,
       userId: state.userId,
       name,
       group
     };
+
     setState(prev => ({ ...prev, categories: [...prev.categories, newCat] }));
+
+    // Persist to Supabase
+    if (state.userId && state.userId !== LOCAL_USER_ID) {
+      const { data, error } = await supabase.from('categories').insert({
+        user_id: state.userId,
+        name,
+        category_group: group
+      }).select().single();
+
+      if (error) {
+        console.error('[finance] addCategory error', error);
+        // Revert or show error? For now, we just log.
+      } else if (data) {
+        // Update with real ID
+        setState(prev => ({
+          ...prev,
+          categories: prev.categories.map(c => c.id === tempId ? { ...c, id: data.id } : c)
+        }));
+      }
+    }
   }, [state.userId]);
 
   const updateBudgetEntry = useCallback((categoryId: string, monthId: string, budgetedCents: number) => {
