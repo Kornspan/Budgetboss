@@ -61,23 +61,26 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ state, onAdd
       setSuggestion(null);
 
       const categoryNames = state.categories.map(c => c.name);
-      
-      const result = await getCategorySuggestion({
-          payee: tx.name,
-          amountCents: tx.amountCents,
-          categoryNames
-      });
+      try {
+        const result = await getCategorySuggestion({
+            payee: tx.name,
+            amountCents: tx.amountCents,
+            categoryNames
+        });
 
-      if (result) {
-          const matchedCat = state.categories.find(c => c.name === result.categoryName);
-          if (matchedCat) {
-              setSuggestion({
-                  id: tx.id,
-                  name: result.categoryName,
-                  reason: result.reason,
-                  categoryId: matchedCat.id
-              });
-          }
+        if (result) {
+            const matchedCat = state.categories.find(c => c.name === result.categoryName);
+            if (matchedCat) {
+                setSuggestion({
+                    id: tx.id,
+                    name: result.categoryName,
+                    reason: result.reason,
+                    categoryId: matchedCat.id
+                });
+            }
+        }
+      } catch (err) {
+        console.error('AI suggestion failed', err);
       }
       setSuggestingId(null);
   };
