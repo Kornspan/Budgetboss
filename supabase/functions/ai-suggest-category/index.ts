@@ -1,8 +1,6 @@
 // supabase/functions/ai-suggest-category/index.ts
 
-import "jsr:@supabase/functions-js/edge-runtime@2";
-
-// Shut TypeScript up locally; Supabase Edge provides the real Deno at runtime.
+// deno-lint-ignore-file no-explicit-any
 declare const Deno: any;
 
 const MODEL_NAME = "gemini-1.5-flash";
@@ -29,7 +27,7 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: "Method not allowed" }, 405);
   }
 
-  const apiKey = Deno?.env?.get?.("GEMINI_API_KEY");
+  const apiKey = Deno.env.get("GEMINI_API_KEY");
   if (!apiKey) {
     console.error("[ai-suggest-category] Missing GEMINI_API_KEY");
     return jsonResponse(
