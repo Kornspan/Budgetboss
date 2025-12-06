@@ -37,7 +37,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ state, onAdd
   // Suggestion State
   const [suggestingId, setSuggestingId] = useState<string | null>(null);
   const [suggestion, setSuggestion] = useState<{ id: string; name: string; reason: string; categoryId: string } | null>(null);
-  const [suggestionError, setSuggestionError] = useState<string | null>(null);
+  const [suggestionMessage, setSuggestionMessage] = useState<{ id: string; text: string; kind: 'error' | 'info' } | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,7 +60,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ state, onAdd
   const handleSuggestCategory = async (tx: Transaction) => {
       setSuggestingId(tx.id);
       setSuggestion(null);
-      setSuggestionError(null);
+      setSuggestionMessage(null);
 
       const categories = state.categories.map(c => ({ id: c.id, name: c.name }));
       try {
@@ -77,7 +77,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ state, onAdd
                     categoryId: matchedCat.id
                 });
             } else {
-              setSuggestionError('AI suggested a category that was not found in your list.');
+              setSuggestionMessage({ id: tx.id, text: 'AI suggested a category that was not found in your list.', kind: 'error' });
             }
         } else if (result?.suggestedCategoryName) {
           const matchedCat = state.categories.find(c => c.name === result.suggestedCategoryName);
@@ -89,14 +89,14 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ state, onAdd
               categoryId: matchedCat.id,
             });
           } else {
-            setSuggestionError('AI suggested a category that was not found in your list.');
+            setSuggestionMessage({ id: tx.id, text: `AI suggested "${result.suggestedCategoryName}", but you don't have that category yet.`, kind: 'error' });
           }
         } else {
-          setSuggestionError('No category suggestion available.');
+          setSuggestionMessage({ id: tx.id, text: result?.reason || 'No category suggestion available.', kind: 'info' });
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'See console for details';
-        setSuggestionError(`AI suggestion failed: ${message}`);
+        setSuggestionMessage({ id: tx.id, text: `AI suggestion failed: ${message}`, kind: 'error' });
         console.error('AI suggestion failed', err);
       }
       setSuggestingId(null);
@@ -227,6 +227,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ state, onAdd
                     const account = state.accounts.find(a => a.id === tx.accountId);
                     const hasSuggestion = suggestion && suggestion.id === tx.id;
                     const isSuggesting = suggestingId === tx.id;
+                    const messageForRow = suggestionMessage && suggestionMessage.id === tx.id ? suggestionMessage : null;
 
                     return (
                         <tr key={tx.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
@@ -273,6 +274,11 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ state, onAdd
                                             </button>
                                         </div>
                                     </div>
+                                )}
+                                {messageForRow && (
+                                  <div className={`text-xs mt-1 ${messageForRow.kind === 'error' ? 'text-red-600 dark:text-red-400' : 'text-slate-600 dark:text-slate-300'}`}>
+                                    {messageForRow.text}
+                                  </div>
                                 )}
                             </div>
                         </td>

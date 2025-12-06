@@ -31,8 +31,8 @@ export async function getCategorySuggestion(
   categories: { id: string; name: string }[],
 ): Promise<{ suggestedCategoryId: string | null; suggestedCategoryName: string | null; reason: string } | null> {
   console.debug("AI suggest payload", {
-    transaction,
-    categories: categories.map((c) => ({ id: c.id, name: c.name })),
+    transactionId: transaction?.id ?? transaction?.external_transaction_id ?? transaction?.name ?? 'unknown',
+    categoriesCount: categories.length,
   });
   const { data, error } = await supabase.functions.invoke('ai-suggest-category', {
     body: {
