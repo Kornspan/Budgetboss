@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { FinanceState, Transaction } from '../types';
 import { formatMoney, parseMoney } from '../lib/finance';
 import { getCategorySuggestion } from '../lib/ai';
+import { supabase } from '../lib/supabaseClient';
 
 interface TransactionsViewProps {
   state: FinanceState;
@@ -110,6 +111,24 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ state, onAdd
           onUpdateTransaction(txId, { categoryId: suggestion.categoryId });
           setSuggestion(null);
       }
+  };
+
+  const handleChangeTransactionCategory = async (txId: string, categoryId: string | null) => {
+    try {
+      console.log('[tx] update category', { txId, categoryId });
+      const { error } = await supabase
+        .from('transactions')
+        .update({ category_id: categoryId })
+        .eq('id', txId)
+        .eq('user_id', state.userId);
+      if (error) {
+        console.error('[tx] update category error', error);
+        return;
+      }
+      onUpdateTransaction(txId, { categoryId: categoryId || null });
+    } catch (err) {
+      console.error('[tx] update category threw', err);
+    }
   };
 
   const filteredAndSortedTransactions = useMemo(() => {
@@ -237,25 +256,32 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ state, onAdd
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">{tx.date}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900 dark:text-white flex items-center gap-2">
                            {tx.name}
-                           {tx.source === 'imported' && (
-                             <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300 border border-blue-100 dark:border-blue-800">Bank</span>
+                           {account?.type && (
+                             <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300 border border-blue-100 dark:border-blue-800">
+                               {account.type}
+                             </span>
                            )}
                         </td>
                         <td className="px-6 py-4 text-sm whitespace-nowrap">
                             <div className="flex flex-col items-start gap-1">
-                                {category ? (
-                                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
-                                        {category.name}
-                                    </span>
-                                ) : (
-                                    <button 
-                                        onClick={() => handleSuggestCategory(tx)}
-                                        disabled={isSuggesting || state.categories.length === 0}
-                                        className="text-indigo-600 dark:text-indigo-400 text-xs font-medium hover:underline flex items-center"
-                                    >
-                                        {state.categories.length === 0 ? 'Add categories first' : isSuggesting ? 'Thinking...' : '✨ Suggest'}
-                                    </button>
-                                )}
+                                <select
+                                  value={tx.categoryId || ''}
+                                  onChange={(e) => handleChangeTransactionCategory(tx.id, e.target.value || null)}
+                                  className="text-xs rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 px-2 py-1"
+                                  disabled={state.categories.length === 0}
+                                >
+                                  <option value="">Uncategorized</option>
+                                  {state.categories.map(cat => (
+                                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                  ))}
+                                </select>
+                                <button 
+                                    onClick={() => handleSuggestCategory(tx)}
+                                    disabled={isSuggesting || state.categories.length === 0}
+                                    className="text-indigo-600 dark:text-indigo-400 text-xs font-medium hover:underline flex items-center"
+                                >
+                                    {state.categories.length === 0 ? 'Add categories first' : isSuggesting ? 'Thinking...' : '✨ Suggest'}
+                                </button>
                                 
                                 {hasSuggestion && (
                                     <div className="mt-1 flex flex-col bg-indigo-50 dark:bg-slate-700/80 p-2 rounded-md border border-indigo-100 dark:border-slate-600">
