@@ -35,17 +35,17 @@ const DEFAULT_SETTINGS: AppSettings = {
 const DEFAULT_STATE: FinanceState = {
   userId: LOCAL_USER_ID,
   accounts: [
-    { 
-      id: 'acc_1', userId: LOCAL_USER_ID, name: 'Main Checking', type: 'checking', 
-      provider: 'manual', currentBalanceCents: 241458 
+    {
+      id: 'acc_1', userId: LOCAL_USER_ID, name: 'Main Checking', type: 'checking',
+      provider: 'manual', currentBalanceCents: 241458
     },
-    { 
-      id: 'acc_2', userId: LOCAL_USER_ID, name: 'High Yield Savings', type: 'savings', 
-      provider: 'manual', currentBalanceCents: 1000000 
+    {
+      id: 'acc_2', userId: LOCAL_USER_ID, name: 'High Yield Savings', type: 'savings',
+      provider: 'manual', currentBalanceCents: 1000000
     },
-    { 
-      id: 'acc_3', userId: LOCAL_USER_ID, name: 'Chase Sapphire', type: 'credit', 
-      provider: 'manual', currentBalanceCents: -15000 
+    {
+      id: 'acc_3', userId: LOCAL_USER_ID, name: 'Chase Sapphire', type: 'credit',
+      provider: 'manual', currentBalanceCents: -15000
     },
   ],
   categories: [
@@ -68,13 +68,13 @@ const DEFAULT_STATE: FinanceState = {
     { id: 'be_3', userId: LOCAL_USER_ID, budgetMonthId: 'bm_2024_05', categoryId: 'cat_3', budgetedCents: 20000 },
   ],
   transactions: [
-    { 
-      id: 'tx_1', userId: LOCAL_USER_ID, date: new Date().toISOString().split('T')[0], 
+    {
+      id: 'tx_1', userId: LOCAL_USER_ID, date: new Date().toISOString().split('T')[0],
       accountId: 'acc_1', categoryId: 'cat_1', name: 'Trader Joes', amountCents: -8542,
       source: 'manual', status: 'posted'
     },
-    { 
-      id: 'tx_2', userId: LOCAL_USER_ID, date: new Date().toISOString().split('T')[0], 
+    {
+      id: 'tx_2', userId: LOCAL_USER_ID, date: new Date().toISOString().split('T')[0],
       accountId: 'acc_1', categoryId: 'cat_3', name: 'Local Coffee Shop', amountCents: -1250,
       source: 'manual', status: 'posted'
     }
@@ -142,17 +142,17 @@ export function useFinanceState() {
       if (stored) {
         const parsed = JSON.parse(stored);
         const merged = { ...DEFAULT_STATE, ...parsed };
-        
+
         // Ensure widgets exist
         if (!merged.dashboardWidgets || merged.dashboardWidgets.length === 0) {
-            merged.dashboardWidgets = DEFAULT_WIDGETS;
+          merged.dashboardWidgets = DEFAULT_WIDGETS;
         }
         // Ensure settings exist (migration)
         if (!merged.appSettings) {
-            merged.appSettings = DEFAULT_SETTINGS;
+          merged.appSettings = DEFAULT_SETTINGS;
         } else {
-            // Deep merge in case of new setting fields
-            merged.appSettings = { ...DEFAULT_SETTINGS, ...merged.appSettings, ai: { ...DEFAULT_SETTINGS.ai, ...merged.appSettings.ai } };
+          // Deep merge in case of new setting fields
+          merged.appSettings = { ...DEFAULT_SETTINGS, ...merged.appSettings, ai: { ...DEFAULT_SETTINGS.ai, ...merged.appSettings.ai } };
         }
 
         setState(merged);
@@ -215,7 +215,8 @@ export function useFinanceState() {
       status: 'posted'
     };
 
-    const categorizedTx = autoCategorizeTransaction(newTx, state.categoryRules);
+    // For manual transactions, we respect the user's choice if provided, otherwise try basic rule matching
+    const categorizedTx = input.categoryId ? newTx : autoCategorizeTransaction(newTx, state.categoryRules);
 
     setState(prev => {
       const newTransactions = [categorizedTx, ...prev.transactions];
@@ -236,7 +237,7 @@ export function useFinanceState() {
       let addedCount = 0;
 
       for (const tx of incomingTxs) {
-        const exists = tx.externalTransactionId 
+        const exists = tx.externalTransactionId
           ? updatedTransactions.find(t => t.externalTransactionId === tx.externalTransactionId)
           : false;
 
@@ -256,12 +257,12 @@ export function useFinanceState() {
     setState(prev => {
       const existing = prev.budgetMonths.find(m => m.year === year && m.month === month);
       if (existing) return prev;
-      
+
       const newMonth: BudgetMonth = {
-          id: `bm_${year}_${month}`,
-          userId: prev.userId,
-          year,
-          month
+        id: `bm_${year}_${month}`,
+        userId: prev.userId,
+        year,
+        month
       };
       return { ...prev, budgetMonths: [...prev.budgetMonths, newMonth] };
     });
@@ -277,7 +278,7 @@ export function useFinanceState() {
 
       const newAmount = updates.amountCents;
       const amountDiff = (newAmount !== undefined) ? newAmount - oldTx.amountCents : 0;
-      
+
       let newAccounts = prev.accounts;
       if (oldTx.source === 'manual' && amountDiff !== 0) {
         newAccounts = prev.accounts.map(acc => {
@@ -343,34 +344,34 @@ export function useFinanceState() {
   // --- Dashboard Actions ---
 
   const toggleDashboardWidget = useCallback((id: string, enabled: boolean) => {
-      setState(prev => ({
-          ...prev,
-          dashboardWidgets: prev.dashboardWidgets.map(w => w.id === id ? { ...w, enabled } : w)
-      }));
+    setState(prev => ({
+      ...prev,
+      dashboardWidgets: prev.dashboardWidgets.map(w => w.id === id ? { ...w, enabled } : w)
+    }));
   }, []);
 
   const moveDashboardWidget = useCallback((id: string, direction: 'up' | 'down') => {
-      setState(prev => {
-          const sorted = [...prev.dashboardWidgets].sort((a, b) => a.position - b.position);
-          const index = sorted.findIndex(w => w.id === id);
-          if (index === -1) return prev;
+    setState(prev => {
+      const sorted = [...prev.dashboardWidgets].sort((a, b) => a.position - b.position);
+      const index = sorted.findIndex(w => w.id === id);
+      if (index === -1) return prev;
 
-          if (direction === 'up' && index > 0) {
-              const tempPos = sorted[index].position;
-              sorted[index].position = sorted[index - 1].position;
-              sorted[index - 1].position = tempPos;
-          } else if (direction === 'down' && index < sorted.length - 1) {
-              const tempPos = sorted[index].position;
-              sorted[index].position = sorted[index + 1].position;
-              sorted[index + 1].position = tempPos;
-          }
-          const reNormalized = sorted.sort((a,b) => a.position - b.position).map((w, i) => ({ ...w, position: i }));
-          return { ...prev, dashboardWidgets: reNormalized };
-      });
+      if (direction === 'up' && index > 0) {
+        const tempPos = sorted[index].position;
+        sorted[index].position = sorted[index - 1].position;
+        sorted[index - 1].position = tempPos;
+      } else if (direction === 'down' && index < sorted.length - 1) {
+        const tempPos = sorted[index].position;
+        sorted[index].position = sorted[index + 1].position;
+        sorted[index + 1].position = tempPos;
+      }
+      const reNormalized = sorted.sort((a, b) => a.position - b.position).map((w, i) => ({ ...w, position: i }));
+      return { ...prev, dashboardWidgets: reNormalized };
+    });
   }, []);
 
   const updateDashboardWidgets = useCallback((nextWidgets: DashboardWidgetConfig[]) => {
-      setState(prev => ({ ...prev, dashboardWidgets: nextWidgets }));
+    setState(prev => ({ ...prev, dashboardWidgets: nextWidgets }));
   }, []);
 
   // --- Settings Actions ---
@@ -418,17 +419,26 @@ export function useFinanceState() {
     let snapshot = await fetchFinanceSnapshot(userId);
     let categories = await loadCategoriesFromSupabase(userId);
 
+    // SEED DEFAULT CATEGORIES IF NONE EXIST
     if (!categories || categories.length === 0) {
+      console.log('[finance] No categories found, seeding defaults...');
       const rowsToInsert = DEFAULT_CATEGORIES.map((cat) => ({
         user_id: userId,
         name: cat.name,
         category_group: cat.category_group,
       }));
+
       const { error: seedError } = await supabase
         .from('categories')
         .upsert(rowsToInsert, { onConflict: 'user_id,name' });
-      console.log('[finance] seeded default categories', { userId, count: rowsToInsert.length, seedError });
-      categories = await loadCategoriesFromSupabase(userId);
+
+      if (seedError) {
+        console.error('[finance] Failed to seed categories', seedError);
+      } else {
+        console.log('[finance] Seeded default categories', { userId, count: rowsToInsert.length });
+        // Reload categories after seeding
+        categories = await loadCategoriesFromSupabase(userId);
+      }
     }
 
     applySnapshot(userId, { ...snapshot, categories });
@@ -451,22 +461,29 @@ export function useFinanceState() {
     let cancelled = false;
 
     const run = async () => {
+      // Process one at a time to be gentle
       for (const tx of uncategorized) {
+        if (cancelled) break;
+
+        // Mark as processed immediately to avoid loops
         autoCategorizedIds.current.add(tx.id);
+
         try {
-          const suggestion = await import('../lib/ai').then(mod =>
-            mod.getCategorySuggestion(tx, state.categories.map(c => ({ id: c.id, name: c.name })))
+          // Dynamic import to avoid circular dependency issues if any, though lib/ai is safe
+          const mod = await import('../lib/ai');
+
+          const suggestion = await mod.getCategorySuggestion(
+            tx,
+            state.categories.map(c => ({ id: c.id, name: c.name }))
           );
 
-          if (
-            suggestion &&
-            suggestion.suggestedCategoryId
-          ) {
+          if (suggestion && suggestion.suggestedCategoryId) {
             const matched = state.categories.find(
               (c) =>
                 c.id === suggestion.suggestedCategoryId ||
                 c.name === suggestion.suggestedCategoryName,
             );
+
             if (matched && !cancelled) {
               console.log('[autoCategory] suggested', {
                 txId: tx.id,
@@ -474,12 +491,15 @@ export function useFinanceState() {
                 suggestedCategoryId: matched.id,
                 suggestedCategoryName: matched.name,
               });
+
+              // Update Supabase
               await supabase
                 .from('transactions')
                 .update({ category_id: matched.id })
                 .eq('id', tx.id)
                 .eq('user_id', userId);
 
+              // Update Local State
               setState((prev) => ({
                 ...prev,
                 transactions: prev.transactions.map((t) =>
@@ -491,8 +511,11 @@ export function useFinanceState() {
             console.log('[autoCategory] no suggestion', { txId: tx.id, name: tx.name, reason: suggestion?.reason });
           }
         } catch (error) {
-          console.error('[auto-categorize] failed', error);
+          console.error('[auto-categorize] failed for tx', tx.id, error);
         }
+
+        // Small delay between items
+        await new Promise(r => setTimeout(r, 1000));
       }
     };
 

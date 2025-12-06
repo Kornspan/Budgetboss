@@ -54,8 +54,7 @@ Deno.serve(async (req: Request) => {
   }
 
   // Allow for { transaction, categories } OR { payload: { transaction, categories } }
-  // OR { received: { ... } } from your temporary debug function.
-  let payload: any = raw?.payload ?? raw?.received ?? raw ?? {};
+  let payload: any = raw?.payload ?? raw ?? {};
   let transaction = payload.transaction;
   let categories = payload.categories;
 
@@ -76,7 +75,7 @@ Deno.serve(async (req: Request) => {
     categories = [];
   }
 
-  if (!Array.isArray(categories) || categories.length === 0) {
+  if (categories.length === 0) {
     console.warn("[ai-suggest-category] No categories provided; returning null suggestion");
     return jsonResponse({
       suggestedCategoryId: null,
@@ -139,77 +138,86 @@ ${JSON.stringify(catSummary)}
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: {
       temperature: 0.3,
+      responseMimeType: "application/json",
     },
   };
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/${MODEL_NAME}:generateContent?key=${apiKey}`;
 
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(geminiBody),
-  });
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(geminiBody),
+    });
 
-  if (!resp.ok) {
-    const text = await resp.text();
-    console.error("[ai-suggest-category] Gemini error", resp.status, text);
-    return jsonResponse(
-      { error: "Gemini API error", status: resp.status, details: text },
-      500,
-    );
-  }
+    if (!resp.ok) {
+      const text = await resp.text();
+      console.error("[ai-suggest-category] Gemini error", resp.status, text);
+      return jsonResponse(
+        { error: "Gemini API error", status: resp.status, details: text },
+        500,
+      );
+    }
 
-  const data = (await resp.json()) as any;
-  const text =
-    data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
+    const data = (await resp.json()) as any;
+    const text =
+      data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
 
-  if (!text) {
-    console.error("[ai-suggest-category] No text from Gemini", data);
-    return jsonResponse({ error: "No content from Gemini" }, 500);
-  }
+    if (!text) {
+      console.error("[ai-suggest-category] No text from Gemini", data);
+      return jsonResponse({ error: "No content from Gemini" }, 500);
+    }
 
-  let parsed:
-    | {
+    let parsed:
+      | {
         suggestedCategoryId?: string;
         suggestedCategoryName?: string;
         reason?: string;
       }
-    | undefined;
+      | undefined;
 
-  try {
-    parsed = JSON.parse(text);
-  } catch (_err) {
-    console.warn(
-      "[ai-suggest-category] Gemini returned non-JSON, returning raw text",
-      text,
-    );
+    try {
+      // Clean up markdown code fences if present
+      const cleanText = text.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+      parsed = JSON.parse(cleanText);
+    } catch (_err) {
+      console.warn(
+        "[ai-suggest-category] Gemini returned non-JSON, returning raw text",
+        text,
+      );
+      return jsonResponse({
+        suggestedCategoryId: null,
+        suggestedCategoryName: null,
+        reason: "Model response was not valid JSON.",
+        raw: text,
+      });
+    }
+
+    const chosenId = parsed?.suggestedCategoryId ?? null;
+    const chosenName = parsed?.suggestedCategoryName ?? null;
+    const inList = chosenId ? catSummary.find((c) => c.id === chosenId) : null;
+    const nameInList = chosenName ? catSummary.find((c) => c.name === chosenName) : null;
+
+    if (chosenId && !inList && !nameInList) {
+      return jsonResponse({
+        suggestedCategoryId: null,
+        suggestedCategoryName: null,
+        reason: `Model suggested '${chosenName || chosenId}' which is not in the allowed categories.`,
+        raw: text,
+      });
+    }
+
+    const finalName = inList?.name ?? nameInList?.name ?? chosenName ?? null;
     return jsonResponse({
-      suggestedCategoryId: null,
-      suggestedCategoryName: null,
-      reason: text,
+      suggestedCategoryId: inList?.id ?? chosenId ?? nameInList?.id ?? null,
+      suggestedCategoryName: finalName,
+      reason: parsed?.reason ?? "",
       raw: text,
     });
+
+  } catch (err) {
+    console.error("[ai-suggest-category] Unexpected error", err);
+    return jsonResponse({ error: "Internal Server Error", details: String(err) }, 500);
   }
-
-  const chosenId = parsed?.suggestedCategoryId ?? null;
-  const chosenName = parsed?.suggestedCategoryName ?? null;
-  const inList = chosenId ? catSummary.find((c) => c.id === chosenId) : null;
-  const nameInList = chosenName ? catSummary.find((c) => c.name === chosenName) : null;
-
-  if (chosenId && !inList && !nameInList) {
-    return jsonResponse({
-      suggestedCategoryId: null,
-      suggestedCategoryName: null,
-      reason: "Model did not return a valid category id from the provided list.",
-      raw: text,
-    });
-  }
-
-  const finalName = inList?.name ?? nameInList?.name ?? chosenName ?? null;
-  return jsonResponse({
-    suggestedCategoryId: inList?.id ?? chosenId ?? nameInList?.id ?? null,
-    suggestedCategoryName: finalName,
-    reason: parsed?.reason ?? "",
-    raw: text,
-  });
 });

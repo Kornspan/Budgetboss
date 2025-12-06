@@ -49,12 +49,16 @@ export async function getCategorySuggestion(
       categories: categories.map((c) => ({ id: c.id, name: c.name })),
     },
   });
+
   if (error) {
-    throw error;
+    console.error("AI Suggestion Error:", error);
+    throw new Error(`AI suggestion failed: ${error.message || 'Unknown error'}`);
   }
+
   if (!data) {
     throw new Error('No data returned from ai-suggest-category');
   }
+
   return {
     suggestedCategoryId: data.suggestedCategoryId ?? null,
     suggestedCategoryName: data.suggestedCategoryName ?? null,
