@@ -3,7 +3,7 @@
 
 // deno-lint-ignore-file no-explicit-any
 
-const MODEL_NAME = "gemini-1.5-flash";
+const MODEL_NAME = "models/gemini-1.5-flash-001";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

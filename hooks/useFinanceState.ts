@@ -93,20 +93,20 @@ const DEFAULT_STATE: FinanceState = {
   appSettings: DEFAULT_SETTINGS,
 };
 
-const DEFAULT_CATEGORY_NAMES = [
-  'Groceries',
-  'Restaurants / Eating Out',
-  'Transport',
-  'Rent / Housing',
-  'Utilities',
-  'Entertainment',
-  'Travel',
-  'Health / Fitness',
-  'Shopping',
-  'Electronics',
-  'Car',
-  'Gas',
-  'Misc',
+const DEFAULT_CATEGORIES = [
+  { name: 'Groceries', category_group: 'Living' },
+  { name: 'Restaurants / Eating Out', category_group: 'Living' },
+  { name: 'Transport', category_group: 'Living' },
+  { name: 'Rent / Housing', category_group: 'Living' },
+  { name: 'Utilities', category_group: 'Living' },
+  { name: 'Entertainment', category_group: 'Fun' },
+  { name: 'Travel', category_group: 'Fun' },
+  { name: 'Health / Fitness', category_group: 'Health' },
+  { name: 'Shopping', category_group: 'Shopping' },
+  { name: 'Electronics', category_group: 'Shopping' },
+  { name: 'Car', category_group: 'Car' },
+  { name: 'Gas', category_group: 'Car' },
+  { name: 'Misc', category_group: 'General' },
 ];
 
 async function loadCategoriesFromSupabase(userId: string): Promise<Category[]> {
@@ -419,9 +419,10 @@ export function useFinanceState() {
     let categories = await loadCategoriesFromSupabase(userId);
 
     if (!categories || categories.length === 0) {
-      const rowsToInsert = DEFAULT_CATEGORY_NAMES.map((name) => ({
+      const rowsToInsert = DEFAULT_CATEGORIES.map((cat) => ({
         user_id: userId,
-        name,
+        name: cat.name,
+        category_group: cat.category_group,
       }));
       const { error: seedError } = await supabase
         .from('categories')
@@ -467,6 +468,12 @@ export function useFinanceState() {
                 c.name === suggestion.suggestedCategoryName,
             );
             if (matched && !cancelled) {
+              console.log('[autoCategory] suggested', {
+                txId: tx.id,
+                name: tx.name,
+                suggestedCategoryId: matched.id,
+                suggestedCategoryName: matched.name,
+              });
               await supabase
                 .from('transactions')
                 .update({ category_id: matched.id })
@@ -480,6 +487,8 @@ export function useFinanceState() {
                 ),
               }));
             }
+          } else {
+            console.log('[autoCategory] no suggestion', { txId: tx.id, name: tx.name, reason: suggestion?.reason });
           }
         } catch (error) {
           console.error('[auto-categorize] failed', error);
