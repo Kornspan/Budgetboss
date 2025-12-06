@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { FinanceState, Transaction, Account, Category, BudgetEntry, DashboardWidgetConfig, FireConfig, CategoryRule, BudgetMonth, Goal, AppSettings, ThemePreference, AiPersonality } from '../types';
 import { autoCategorizeTransaction } from '../lib/finance';
 import { fetchFinanceSnapshot, FinanceSnapshot } from '../lib/financeSync';
@@ -112,6 +112,7 @@ const DEFAULT_CATEGORY_NAMES = [
 export function useFinanceState() {
   const [state, setState] = useState<FinanceState>(DEFAULT_STATE);
   const [isLoaded, setIsLoaded] = useState(false);
+  const autoCategorizedIds = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     try {
@@ -426,6 +427,67 @@ export function useFinanceState() {
 
     applySnapshot(userId, snapshot);
   }, [applySnapshot]);
+
+  // Auto-categorize imported transactions lacking a category, one by one, using AI helper.
+  useEffect(() => {
+    const userId = state.userId;
+    if (!isLoaded || !userId || !state.categories || state.categories.length === 0 || !state.transactions) return;
+
+    const uncategorized = state.transactions.filter(
+      (tx) =>
+        !tx.categoryId &&
+        tx.source === 'imported' &&
+        !autoCategorizedIds.current.has(tx.id),
+    );
+
+    if (uncategorized.length === 0) return;
+
+    let cancelled = false;
+
+    const run = async () => {
+      for (const tx of uncategorized) {
+        autoCategorizedIds.current.add(tx.id);
+        try {
+          const suggestion = await import('../lib/ai').then(mod =>
+            mod.getCategorySuggestion(tx, state.categories.map(c => ({ id: c.id, name: c.name })))
+          );
+
+          if (
+            suggestion &&
+            suggestion.suggestedCategoryId
+          ) {
+            const matched = state.categories.find(
+              (c) =>
+                c.id === suggestion.suggestedCategoryId ||
+                c.name === suggestion.suggestedCategoryName,
+            );
+            if (matched && !cancelled) {
+              await supabase
+                .from('transactions')
+                .update({ category_id: matched.id })
+                .eq('id', tx.id)
+                .eq('user_id', userId);
+
+              setState((prev) => ({
+                ...prev,
+                transactions: prev.transactions.map((t) =>
+                  t.id === tx.id ? { ...t, categoryId: matched.id } : t
+                ),
+              }));
+            }
+          }
+        } catch (error) {
+          console.error('[auto-categorize] failed', error);
+        }
+      }
+    };
+
+    run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [state.userId, state.transactions, state.categories, isLoaded]);
 
   return {
     state,

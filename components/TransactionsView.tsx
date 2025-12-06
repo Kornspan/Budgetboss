@@ -248,10 +248,10 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ state, onAdd
                                 ) : (
                                     <button 
                                         onClick={() => handleSuggestCategory(tx)}
-                                        disabled={isSuggesting}
+                                        disabled={isSuggesting || state.categories.length === 0}
                                         className="text-indigo-600 dark:text-indigo-400 text-xs font-medium hover:underline flex items-center"
                                     >
-                                        {isSuggesting ? 'Thinking...' : '✨ Suggest'}
+                                        {state.categories.length === 0 ? 'Add categories first' : isSuggesting ? 'Thinking...' : '✨ Suggest'}
                                     </button>
                                 )}
                                 
