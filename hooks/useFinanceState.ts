@@ -109,6 +109,28 @@ const DEFAULT_CATEGORY_NAMES = [
   'Misc',
 ];
 
+async function loadCategoriesFromSupabase(userId: string): Promise<Category[]> {
+  const { data, error } = await supabase
+    .from('categories')
+    .select('id, name, category_group, created_at')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('[finance] loadCategoriesFromSupabase error', { userId, error });
+    return [];
+  }
+
+  console.log('[finance] loaded categories', { userId, count: data?.length ?? 0, sample: data?.[0] });
+
+  return (data ?? []).map((row: any) => ({
+    id: row.id,
+    userId: userId,
+    name: row.name,
+    group: row.category_group ?? undefined,
+  }));
+}
+
 export function useFinanceState() {
   const [state, setState] = useState<FinanceState>(DEFAULT_STATE);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -394,38 +416,21 @@ export function useFinanceState() {
 
   const loadFromSupabaseForUser = useCallback(async (userId: string) => {
     let snapshot = await fetchFinanceSnapshot(userId);
+    let categories = await loadCategoriesFromSupabase(userId);
 
-    if (!snapshot.categories || snapshot.categories.length === 0) {
-      try {
-        const { data: existing, error: loadError } = await supabase
-          .from('categories')
-          .select('name')
-          .eq('user_id', userId);
-        if (loadError) throw loadError;
-
-        const existingNames = new Set((existing ?? []).map((c: any) => (c.name as string).toLowerCase()));
-        const toInsert = DEFAULT_CATEGORY_NAMES
-          .filter((name) => !existingNames.has(name.toLowerCase()))
-          .map((name, idx) => ({
-            id: `cat_seed_${Date.now()}_${idx}`,
-            user_id: userId,
-            name,
-            category_group: null,
-          }));
-
-        if (toInsert.length > 0) {
-          const { error: insertError } = await supabase.from('categories').insert(toInsert);
-          if (insertError) throw insertError;
-        }
-
-        // Reload snapshot after seeding
-        snapshot = await fetchFinanceSnapshot(userId);
-      } catch (error) {
-        console.error('[seed default categories] failed', error);
-      }
+    if (!categories || categories.length === 0) {
+      const rowsToInsert = DEFAULT_CATEGORY_NAMES.map((name) => ({
+        user_id: userId,
+        name,
+      }));
+      const { error: seedError } = await supabase
+        .from('categories')
+        .upsert(rowsToInsert, { onConflict: 'user_id,name' });
+      console.log('[finance] seeded default categories', { userId, count: rowsToInsert.length, seedError });
+      categories = await loadCategoriesFromSupabase(userId);
     }
 
-    applySnapshot(userId, snapshot);
+    applySnapshot(userId, { ...snapshot, categories });
   }, [applySnapshot]);
 
   // Auto-categorize imported transactions lacking a category, one by one, using AI helper.

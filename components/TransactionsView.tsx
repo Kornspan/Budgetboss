@@ -14,6 +14,8 @@ type SortField = 'date' | 'amount';
 type SortDirection = 'asc' | 'desc';
 
 export const TransactionsView: React.FC<TransactionsViewProps> = ({ state, onAddTransaction, onUpdateTransaction }) => {
+  console.log('[transactions] categories for UI', state.categories.length);
+
   // Form State
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
