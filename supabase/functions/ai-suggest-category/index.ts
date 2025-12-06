@@ -72,12 +72,16 @@ Deno.serve(async (req: Request) => {
     );
   }
 
+  if (!Array.isArray(categories)) {
+    categories = [];
+  }
+
   if (!Array.isArray(categories) || categories.length === 0) {
     console.warn("[ai-suggest-category] No categories provided; returning null suggestion");
     return jsonResponse({
       suggestedCategoryId: null,
       suggestedCategoryName: null,
-      reason: "No categories provided; cannot suggest a category.",
+      reason: "No categories were provided for this user.",
       raw: null,
     });
   }
@@ -113,21 +117,21 @@ Deno.serve(async (req: Request) => {
   }));
 
   const prompt = `
-You are an assistant that assigns personal finance categories.
+You are a transaction categorization assistant.
+Choose exactly ONE category id from the allowed list below. Do NOT invent new categories.
+If nothing fits, return nulls with a brief reason.
 
-Pick the SINGLE best category id from the provided list for this transaction.
 Return ONLY a JSON object, no markdown, no extra text, with this exact shape:
-
 {
-  "suggestedCategoryId": "<id from categories>",
-  "suggestedCategoryName": "<name from categories>",
+  "suggestedCategoryId": "<id from categories or null>",
+  "suggestedCategoryName": "<name from categories or null>",
   "reason": "<short explanation>"
 }
 
 Transaction (JSON):
 ${JSON.stringify(txSummary)}
 
-Available categories (JSON):
+Allowed categories (JSON):
 ${JSON.stringify(catSummary)}
 `.trim();
 
@@ -187,9 +191,24 @@ ${JSON.stringify(catSummary)}
     });
   }
 
+  const chosenId = parsed?.suggestedCategoryId ?? null;
+  const chosenName = parsed?.suggestedCategoryName ?? null;
+  const inList = chosenId ? catSummary.find((c) => c.id === chosenId) : null;
+  const nameInList = chosenName ? catSummary.find((c) => c.name === chosenName) : null;
+
+  if (chosenId && !inList && !nameInList) {
+    return jsonResponse({
+      suggestedCategoryId: null,
+      suggestedCategoryName: null,
+      reason: "Model did not return a valid category id from the provided list.",
+      raw: text,
+    });
+  }
+
+  const finalName = inList?.name ?? nameInList?.name ?? chosenName ?? null;
   return jsonResponse({
-    suggestedCategoryId: parsed?.suggestedCategoryId ?? null,
-    suggestedCategoryName: parsed?.suggestedCategoryName ?? null,
+    suggestedCategoryId: inList?.id ?? chosenId ?? nameInList?.id ?? null,
+    suggestedCategoryName: finalName,
     reason: parsed?.reason ?? "",
     raw: text,
   });

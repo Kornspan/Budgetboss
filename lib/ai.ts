@@ -34,6 +34,15 @@ export async function getCategorySuggestion(
     transactionId: transaction?.id ?? transaction?.external_transaction_id ?? transaction?.name ?? 'unknown',
     categoriesCount: categories.length,
   });
+
+  if (!categories || categories.length === 0) {
+    return {
+      suggestedCategoryId: null,
+      suggestedCategoryName: null,
+      reason: "No categories are configured yet. Add categories before using AI suggestions.",
+    };
+  }
+
   const { data, error } = await supabase.functions.invoke('ai-suggest-category', {
     body: {
       transaction,

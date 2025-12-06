@@ -76,6 +76,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ state, onAdd
                     reason: result.reason,
                     categoryId: matchedCat.id
                 });
+                setSuggestionMessage({ id: tx.id, text: `Suggested: ${matchedCat.name} – ${result.reason}`, kind: 'success' });
             } else {
               setSuggestionMessage({ id: tx.id, text: 'AI suggested a category that was not found in your list.', kind: 'error' });
             }

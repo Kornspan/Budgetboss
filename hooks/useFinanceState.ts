@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { FinanceState, Transaction, Account, Category, BudgetEntry, DashboardWidgetConfig, FireConfig, CategoryRule, BudgetMonth, Goal, AppSettings, ThemePreference, AiPersonality } from '../types';
 import { autoCategorizeTransaction } from '../lib/finance';
 import { fetchFinanceSnapshot, FinanceSnapshot } from '../lib/financeSync';
+import { supabase } from '../lib/supabaseClient';
 
 const STORAGE_KEY = 'finance_prototype_v2_plaid_ready';
 const LOCAL_USER_ID = 'local-user';
@@ -91,6 +92,22 @@ const DEFAULT_STATE: FinanceState = {
   dashboardWidgets: DEFAULT_WIDGETS,
   appSettings: DEFAULT_SETTINGS,
 };
+
+const DEFAULT_CATEGORY_NAMES = [
+  'Groceries',
+  'Restaurants / Eating Out',
+  'Transport',
+  'Rent / Housing',
+  'Utilities',
+  'Entertainment',
+  'Travel',
+  'Health / Fitness',
+  'Shopping',
+  'Electronics',
+  'Car',
+  'Gas',
+  'Misc',
+];
 
 export function useFinanceState() {
   const [state, setState] = useState<FinanceState>(DEFAULT_STATE);
@@ -375,7 +392,38 @@ export function useFinanceState() {
   }, []);
 
   const loadFromSupabaseForUser = useCallback(async (userId: string) => {
-    const snapshot = await fetchFinanceSnapshot(userId);
+    let snapshot = await fetchFinanceSnapshot(userId);
+
+    if (!snapshot.categories || snapshot.categories.length === 0) {
+      try {
+        const { data: existing, error: loadError } = await supabase
+          .from('categories')
+          .select('name')
+          .eq('user_id', userId);
+        if (loadError) throw loadError;
+
+        const existingNames = new Set((existing ?? []).map((c: any) => (c.name as string).toLowerCase()));
+        const toInsert = DEFAULT_CATEGORY_NAMES
+          .filter((name) => !existingNames.has(name.toLowerCase()))
+          .map((name, idx) => ({
+            id: `cat_seed_${Date.now()}_${idx}`,
+            user_id: userId,
+            name,
+            category_group: null,
+          }));
+
+        if (toInsert.length > 0) {
+          const { error: insertError } = await supabase.from('categories').insert(toInsert);
+          if (insertError) throw insertError;
+        }
+
+        // Reload snapshot after seeding
+        snapshot = await fetchFinanceSnapshot(userId);
+      } catch (error) {
+        console.error('[seed default categories] failed', error);
+      }
+    }
+
     applySnapshot(userId, snapshot);
   }, [applySnapshot]);
 
