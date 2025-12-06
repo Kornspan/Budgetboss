@@ -37,6 +37,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ state, onAdd
   // Suggestion State
   const [suggestingId, setSuggestingId] = useState<string | null>(null);
   const [suggestion, setSuggestion] = useState<{ id: string; name: string; reason: string; categoryId: string } | null>(null);
+  const [suggestionError, setSuggestionError] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,27 +60,43 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ state, onAdd
   const handleSuggestCategory = async (tx: Transaction) => {
       setSuggestingId(tx.id);
       setSuggestion(null);
+      setSuggestionError(null);
 
-      const categoryNames = state.categories.map(c => c.name);
+      const categories = state.categories.map(c => ({ id: c.id, name: c.name }));
       try {
-        const result = await getCategorySuggestion({
-            payee: tx.name,
-            amountCents: tx.amountCents,
-            categoryNames
-        });
+        const result = await getCategorySuggestion(tx, categories);
 
-        if (result) {
-            const matchedCat = state.categories.find(c => c.name === result.categoryName);
+        if (result?.suggestedCategoryId) {
+            const matchedCat = state.categories.find(c => c.id === result.suggestedCategoryId) ||
+              state.categories.find(c => c.name === result.suggestedCategoryName);
             if (matchedCat) {
                 setSuggestion({
                     id: tx.id,
-                    name: result.categoryName,
+                    name: matchedCat.name,
                     reason: result.reason,
                     categoryId: matchedCat.id
                 });
+            } else {
+              setSuggestionError('AI suggested a category that was not found in your list.');
             }
+        } else if (result?.suggestedCategoryName) {
+          const matchedCat = state.categories.find(c => c.name === result.suggestedCategoryName);
+          if (matchedCat) {
+            setSuggestion({
+              id: tx.id,
+              name: matchedCat.name,
+              reason: result.reason,
+              categoryId: matchedCat.id,
+            });
+          } else {
+            setSuggestionError('AI suggested a category that was not found in your list.');
+          }
+        } else {
+          setSuggestionError('No category suggestion available.');
         }
       } catch (err) {
+        const message = err instanceof Error ? err.message : 'See console for details';
+        setSuggestionError(`AI suggestion failed: ${message}`);
         console.error('AI suggestion failed', err);
       }
       setSuggestingId(null);

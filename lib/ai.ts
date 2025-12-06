@@ -27,15 +27,30 @@ export interface ChatMessageInput {
 }
 
 export async function getCategorySuggestion(
-  input: CategorySuggestionInput,
-): Promise<{ categoryName: string; reason: string } | null> {
+  transaction: any,
+  categories: { id: string; name: string }[],
+): Promise<{ suggestedCategoryId: string | null; suggestedCategoryName: string | null; reason: string } | null> {
+  console.debug("AI suggest payload", {
+    transaction,
+    categories: categories.map((c) => ({ id: c.id, name: c.name })),
+  });
   const { data, error } = await supabase.functions.invoke('ai-suggest-category', {
-    body: input,
+    body: {
+      transaction,
+      categories: categories.map((c) => ({ id: c.id, name: c.name })),
+    },
   });
   if (error) {
     throw error;
   }
-  return data?.suggestion ?? null;
+  if (!data) {
+    throw new Error('No data returned from ai-suggest-category');
+  }
+  return {
+    suggestedCategoryId: data.suggestedCategoryId ?? null,
+    suggestedCategoryName: data.suggestedCategoryName ?? null,
+    reason: data.reason ?? '',
+  };
 }
 
 export async function requestChatReply(
