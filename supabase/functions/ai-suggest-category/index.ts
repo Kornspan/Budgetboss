@@ -1,86 +1,155 @@
-import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
-import { GoogleGenAI, Type } from 'npm:@google/genai';
+// supabase/functions/ai-suggest-category/index.ts
 
-const apiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
-if (!apiKey) {
-  throw new Error('Missing GEMINI_API_KEY for ai-suggest-category function.');
+import "jsr:@supabase/functions-js/edge-runtime@2";
+
+// Shut TypeScript up locally; Supabase Edge provides the real Deno at runtime.
+declare const Deno: any;
+
+const MODEL_NAME = "gemini-1.5-flash";
+
+interface Category {
+  id: string;
+  name: string;
 }
 
-const ai = new GoogleGenAI({ apiKey });
+interface AiSuggestCategoryRequest {
+  transaction: any;
+  categories: Category[];
+}
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
 
-serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+Deno.serve(async (req: Request) => {
+  if (req.method !== "POST") {
+    return jsonResponse({ error: "Method not allowed" }, 405);
   }
 
-  if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-      status: 405,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
-    });
+  const apiKey = Deno?.env?.get?.("GEMINI_API_KEY");
+  if (!apiKey) {
+    console.error("[ai-suggest-category] Missing GEMINI_API_KEY");
+    return jsonResponse(
+      { error: "GEMINI_API_KEY is not set in Edge Function secrets" },
+      500,
+    );
   }
+
+  let payload: AiSuggestCategoryRequest;
+  try {
+    payload = (await req.json()) as AiSuggestCategoryRequest;
+  } catch (err) {
+    console.error("[ai-suggest-category] Invalid JSON body", err);
+    return jsonResponse({ error: "Invalid JSON body" }, 400);
+  }
+
+  const { transaction, categories } = payload || {};
+  if (!transaction || !Array.isArray(categories) || categories.length === 0) {
+    return jsonResponse(
+      { error: "Body must include transaction and non-empty categories array" },
+      400,
+    );
+  }
+
+  const txSummary = {
+    payee:
+      transaction.payee ??
+      transaction.name ??
+      transaction.description ??
+      transaction.merchant ??
+      "",
+    amount:
+      transaction.amount ??
+      (typeof transaction.amount_cents === "number"
+        ? transaction.amount_cents / 100
+        : undefined),
+    date: transaction.transaction_date ?? transaction.date ?? null,
+  };
+
+  const catSummary = categories.map((c) => ({ id: c.id, name: c.name }));
+
+  const prompt = `
+You are an assistant that assigns personal finance categories.
+
+Pick the SINGLE best category id from the provided list for this transaction.
+Return ONLY a JSON object, no markdown, no extra text, with this exact shape:
+
+{
+  "suggestedCategoryId": "<id from categories>",
+  "suggestedCategoryName": "<name from categories>",
+  "reason": "<short explanation>"
+}
+
+Transaction (JSON):
+${JSON.stringify(txSummary)}
+
+Available categories (JSON):
+${JSON.stringify(catSummary)}
+`.trim();
+
+  const body = {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature: 0.3,
+    },
+  };
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${apiKey}`;
+
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    console.error("[ai-suggest-category] Gemini error", resp.status, text);
+    return jsonResponse(
+      { error: "Gemini API error", status: resp.status, details: text },
+      500,
+    );
+  }
+
+  const data = (await resp.json()) as any;
+  const text =
+    data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
+
+  if (!text) {
+    console.error("[ai-suggest-category] No text from Gemini", data);
+    return jsonResponse({ error: "No content from Gemini" }, 500);
+  }
+
+  let parsed:
+    | {
+        suggestedCategoryId?: string;
+        suggestedCategoryName?: string;
+        reason?: string;
+      }
+    | undefined;
 
   try {
-    const body = await req.json().catch(() => null);
-    if (
-      !body ||
-      typeof body.payee !== 'string' ||
-      typeof body.amountCents !== 'number' ||
-      !Array.isArray(body.categoryNames)
-    ) {
-      return new Response(JSON.stringify({ error: 'Invalid payload' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders },
-      });
-    }
-
-    const model = ai.getGenerativeModel({
-      model: 'gemini-2.0-flash-lite-preview-02-05',
-      generationConfig: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            categoryName: { type: Type.STRING },
-            reason: { type: Type.STRING },
-          },
-          required: ['categoryName', 'reason'],
-        },
-      },
-    });
-
-    const prompt = `
-Suggest the single best category for this transaction.
-Payee: "${body.payee}"
-Amount (USD cents): ${body.amountCents}
-
-Available Categories: ${body.categoryNames.join(', ')}
-
-Return JSON with:
-- categoryName: Must be exactly one of the available categories, or "Uncategorized" if no fit.
-- reason: A short (5-10 words) explanation.
-`;
-
-    const result = await model.generateContent(prompt);
-    const text = result.response.text?.();
-    const suggestion = text ? JSON.parse(text) : null;
-
-    return new Response(JSON.stringify({ suggestion }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
-    });
-  } catch (error) {
-    if (Deno.env.get('PLAID_ENV') === 'sandbox') {
-      console.error('[ai-suggest-category] error', error);
-    }
-    return new Response(JSON.stringify({ error: 'Failed to suggest category' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
+    parsed = JSON.parse(text);
+  } catch (err) {
+    console.warn(
+      "[ai-suggest-category] Gemini returned non-JSON, returning raw text",
+      text,
+    );
+    return jsonResponse({
+      suggestedCategoryId: null,
+      suggestedCategoryName: null,
+      reason: text,
+      raw: text,
     });
   }
+
+  return jsonResponse({
+    suggestedCategoryId: parsed?.suggestedCategoryId ?? null,
+    suggestedCategoryName: parsed?.suggestedCategoryName ?? null,
+    reason: parsed?.reason ?? "",
+    raw: text,
+  });
 });
