@@ -5,6 +5,13 @@ declare const Deno: any;
 
 const MODEL_NAME = "gemini-1.5-flash";
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
 interface Category {
   id: string;
   name: string;
@@ -18,11 +25,19 @@ interface AiSuggestCategoryRequest {
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...corsHeaders,
+    },
   });
 }
 
 Deno.serve(async (req: Request) => {
+  // Handle CORS preflight
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
   if (req.method !== "POST") {
     return jsonResponse({ error: "Method not allowed" }, 405);
   }
@@ -88,7 +103,7 @@ Available categories (JSON):
 ${JSON.stringify(catSummary)}
 `.trim();
 
-  const body = {
+  const geminiBody = {
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: {
       temperature: 0.3,
@@ -100,7 +115,7 @@ ${JSON.stringify(catSummary)}
   const resp = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify(geminiBody),
   });
 
   if (!resp.ok) {
@@ -131,7 +146,7 @@ ${JSON.stringify(catSummary)}
 
   try {
     parsed = JSON.parse(text);
-  } catch (err) {
+  } catch (_err) {
     console.warn(
       "[ai-suggest-category] Gemini returned non-JSON, returning raw text",
       text,
