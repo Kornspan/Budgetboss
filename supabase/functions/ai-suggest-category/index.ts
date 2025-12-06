@@ -64,12 +64,22 @@ Deno.serve(async (req: Request) => {
     categories = Object.values(categories);
   }
 
-  if (!transaction || !Array.isArray(categories) || categories.length === 0) {
+  if (!transaction) {
     console.error("[ai-suggest-category] Bad payload", payload);
     return jsonResponse(
-      { error: "Body must include transaction and non-empty categories array" },
+      { error: "Body must include transaction" },
       400,
     );
+  }
+
+  if (!Array.isArray(categories) || categories.length === 0) {
+    console.warn("[ai-suggest-category] No categories provided; returning null suggestion");
+    return jsonResponse({
+      suggestedCategoryId: null,
+      suggestedCategoryName: null,
+      reason: "No categories provided; cannot suggest a category.",
+      raw: null,
+    });
   }
 
   const apiKey = Deno.env.get("GEMINI_API_KEY");
